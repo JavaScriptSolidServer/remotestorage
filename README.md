@@ -10,6 +10,9 @@ Quick notes. Add, view, and delete plain-text notes synced to your storage.
 ### [bookmarks/](bookmarks/)
 Save, tag, search, and organize your bookmarks. Compatible with the [webmarks](https://github.com/raucao/webmarks) data format.
 
+### [grouptabs/](grouptabs/)
+Split expenses in a group. Track who paid what, see balances, and get settlement suggestions.
+
 ### [editor/](editor/)
 Minimal text editor with sidebar document list, auto-save, and keyboard-friendly workflow.
 

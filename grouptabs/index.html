@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GroupTabs</title>
+  <script src="https://cdn.jsdelivr.net/npm/remotestoragejs@1.2.3/release/remotestorage.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/remotestorage-widget@1.4.0/build/widget.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: #f5f5f5; max-width: 520px; margin: 0 auto; padding: 1rem; }
+
+    header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    header h1 { font-size: 1.5rem; }
+    .spacer { flex: 1; }
+
+    /* Views */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* Tab list */
+    .tab-list { list-style: none; }
+    .tab-list li { background: white; margin-bottom: 0.5rem; padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .tab-list li:hover { background: #f8f8f8; }
+    .tab-list .name { font-weight: 500; }
+    .tab-list .meta { font-size: 0.8rem; color: #999; }
+    .tab-list .del { background: none; border: none; color: #ccc; cursor: pointer; font-size: 1.1rem; padding: 0 0.3rem; }
+    .tab-list .del:hover { color: #dc3545; }
+
+    /* Buttons */
+    .btn { padding: 0.5rem 1rem; background: #4a9eff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 500; }
+    .btn:hover { background: #3a8eef; }
+    .btn:disabled { background: #ccc; cursor: default; }
+    .btn-sm { padding: 0.35rem 0.7rem; font-size: 0.8rem; }
+    .btn-outline { background: none; color: #4a9eff; border: 1px solid #4a9eff; }
+    .btn-outline:hover { background: #e8f0fe; }
+    .btn-back { background: none; color: #666; border: none; cursor: pointer; font-size: 0.9rem; padding: 0.3rem 0; }
+    .btn-back:hover { color: #333; }
+    .btn-danger { background: #dc3545; }
+    .btn-danger:hover { background: #c82333; }
+
+    /* Forms */
+    .form-row { margin-bottom: 0.75rem; }
+    .form-row label { display: block; font-size: 0.8rem; font-weight: 500; color: #555; margin-bottom: 0.2rem; }
+    .form-row input, .form-row select { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 6px; font-size: 0.95rem; }
+    .form-row input:focus, .form-row select:focus { outline: none; border-color: #4a9eff; }
+    .form-actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+
+    /* Tab detail */
+    .section-title { font-size: 0.85rem; font-weight: 600; color: #888; text-transform: uppercase; letter-spacing: 0.03em; margin: 1.5rem 0 0.5rem; }
+    .section-title:first-of-type { margin-top: 0.5rem; }
+
+    /* Balances */
+    .balances { list-style: none; }
+    .balances li { display: flex; justify-content: space-between; padding: 0.4rem 0; border-bottom: 1px solid #f0f0f0; font-size: 0.95rem; }
+    .balances .amount { font-weight: 600; }
+    .balances .positive { color: #28a745; }
+    .balances .negative { color: #dc3545; }
+
+    /* Settlements */
+    .settlements { list-style: none; }
+    .settlements li { padding: 0.4rem 0; border-bottom: 1px solid #f0f0f0; font-size: 0.9rem; color: #555; }
+    .settlements .arrow { color: #4a9eff; font-weight: 500; }
+
+    /* Transactions */
+    .tx-list { list-style: none; }
+    .tx-list li { background: white; margin-bottom: 0.4rem; padding: 0.6rem 0.8rem; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); display: flex; justify-content: space-between; align-items: center; }
+    .tx-desc { font-size: 0.9rem; }
+    .tx-detail { font-size: 0.75rem; color: #999; }
+    .tx-amount { font-weight: 600; font-size: 0.95rem; white-space: nowrap; }
+    .tx-del { background: none; border: none; color: #ccc; cursor: pointer; margin-left: 0.5rem; }
+    .tx-del:hover { color: #dc3545; }
+
+    /* Participants */
+    .participants { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    .participant-chip { padding: 0.25rem 0.6rem; background: #e8f0fe; border-radius: 12px; font-size: 0.8rem; display: flex; align-items: center; gap: 0.3rem; }
+    .participant-chip button { background: none; border: none; color: #999; cursor: pointer; font-size: 0.9rem; }
+    .participant-chip button:hover { color: #dc3545; }
+
+    .empty { color: #999; text-align: center; padding: 2rem; }
+
+    /* Checkbox row for splitting */
+    .split-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; }
+    .split-row input[type="checkbox"] { width: 1rem; height: 1rem; }
+    .split-row label { font-size: 0.9rem; flex: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>GroupTabs</h1>
+    <div id="rs-widget"></div>
+    <div class="spacer"></div>
+  </header>
+
+  <!-- View: Tab list -->
+  <div id="v-list" class="view active">
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem">
+      <input type="text" id="new-tab-name" placeholder="New group name..." style="flex:1;padding:0.5rem;border:1px solid #ddd;border-radius:6px;font-size:0.95rem" disabled>
+      <button class="btn" id="new-tab-btn" disabled>Create</button>
+    </div>
+    <ul class="tab-list" id="tab-list"><li class="empty">Connect to your storage to start</li></ul>
+  </div>
+
+  <!-- View: Tab detail -->
+  <div id="v-tab" class="view">
+    <button class="btn-back" id="back-btn">&larr; All groups</button>
+    <h2 id="tab-title" style="margin:0.5rem 0 0"></h2>
+
+    <div class="section-title">Balances</div>
+    <ul class="balances" id="balances"></ul>
+
+    <div class="section-title">Settlements</div>
+    <ul class="settlements" id="settlements"><li class="empty">All settled up</li></ul>
+
+    <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+      Transactions
+      <button class="btn btn-sm" id="add-tx-btn">+ Add</button>
+    </div>
+    <ul class="tx-list" id="tx-list"></ul>
+
+    <div class="section-title">Participants</div>
+    <div class="participants" id="participants"></div>
+    <div style="display:flex;gap:0.5rem">
+      <input type="text" id="new-person" placeholder="Add person..." style="flex:1;padding:0.4rem;border:1px solid #ddd;border-radius:6px;font-size:0.9rem">
+      <button class="btn btn-sm" id="add-person-btn">Add</button>
+    </div>
+  </div>
+
+  <!-- View: Add transaction -->
+  <div id="v-tx" class="view">
+    <button class="btn-back" id="tx-back-btn">&larr; Back</button>
+    <h2 style="margin:0.5rem 0 1rem">Add Expense</h2>
+    <div class="form-row">
+      <label>Description</label>
+      <input type="text" id="tx-desc" placeholder="Dinner, taxi, groceries...">
+    </div>
+    <div class="form-row">
+      <label>Amount</label>
+      <input type="number" id="tx-amount" placeholder="0.00" step="0.01" min="0">
+    </div>
+    <div class="form-row">
+      <label>Paid by</label>
+      <select id="tx-payer"></select>
+    </div>
+    <div class="form-row">
+      <label>Split between</label>
+      <div id="tx-split"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn" id="tx-save-btn">Save</button>
+    </div>
+  </div>
+
+  <script>
+    // --- RS setup ---
+    const rs = new RemoteStorage()
+    rs.access.claim('grouptabs', 'rw')
+    rs.caching.enable('/grouptabs/')
+    const widget = new Widget(rs)
+    widget.attach('rs-widget')
+    const client = rs.scope('/grouptabs/')
+
+    // --- State ---
+    let tabs = {}        // id → { name, participants, transactions }
+    let currentTabId = null
+
+    // --- RS events ---
+    rs.on('connected', () => {
+      document.getElementById('new-tab-name').disabled = false
+      document.getElementById('new-tab-btn').disabled = false
+      loadTabs()
+    })
+    rs.on('disconnected', () => {
+      document.getElementById('new-tab-name').disabled = true
+      document.getElementById('new-tab-btn').disabled = true
+      tabs = {}
+      currentTabId = null
+      showView('v-list')
+      renderTabList()
+    })
+
+    // --- Persistence ---
+    async function loadTabs () {
+      const listing = await client.getListing('')
+      tabs = {}
+      if (listing) {
+        for (const name of Object.keys(listing).filter(k => !k.endsWith('/'))) {
+          try {
+            const file = await client.getFile(name)
+            if (file && file.data) {
+              tabs[name] = JSON.parse(file.data)
+              tabs[name].id = name
+            }
+          } catch (e) { console.warn('Skip', name, e) }
+        }
+      }
+      renderTabList()
+    }
+
+    async function saveTab (id) {
+      const tab = tabs[id]
+      if (!tab) return
+      const data = { name: tab.name, participants: tab.participants, transactions: tab.transactions }
+      await client.storeFile('application/json', id, JSON.stringify(data))
+    }
+
+    async function deleteTab (id) {
+      await client.remove(id)
+      delete tabs[id]
+      if (currentTabId === id) {
+        currentTabId = null
+        showView('v-list')
+      }
+      renderTabList()
+    }
+
+    // --- Views ---
+    function showView (id) {
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'))
+      document.getElementById(id).classList.add('active')
+    }
+
+    // --- Tab list ---
+    function renderTabList () {
+      const list = document.getElementById('tab-list')
+      const entries = Object.values(tabs).sort((a, b) => (b.id || '').localeCompare(a.id || ''))
+
+      if (entries.length === 0) {
+        list.innerHTML = '<li class="empty">No groups yet. Create one above.</li>'
+        return
+      }
+
+      list.innerHTML = ''
+      for (const tab of entries) {
+        const li = document.createElement('li')
+        const left = document.createElement('div')
+        const name = document.createElement('div')
+        name.className = 'name'
+        name.textContent = tab.name
+        const meta = document.createElement('div')
+        meta.className = 'meta'
+        meta.textContent = `${tab.participants.length} people, ${tab.transactions.length} expenses`
+        left.append(name, meta)
+        left.style.cursor = 'pointer'
+        left.style.flex = '1'
+        left.onclick = () => openTab(tab.id)
+
+        const del = document.createElement('button')
+        del.className = 'del'
+        del.textContent = '\u00d7'
+        del.onclick = (e) => { e.stopPropagation(); deleteTab(tab.id) }
+
+        li.append(left, del)
+        list.appendChild(li)
+      }
+    }
+
+    function createTab () {
+      const input = document.getElementById('new-tab-name')
+      const name = input.value.trim()
+      if (!name) return
+      const id = Date.now().toString()
+      tabs[id] = { id, name, participants: [], transactions: [] }
+      saveTab(id)
+      input.value = ''
+      renderTabList()
+      openTab(id)
+    }
+
+    document.getElementById('new-tab-btn').onclick = createTab
+    document.getElementById('new-tab-name').addEventListener('keydown', e => { if (e.key === 'Enter') createTab() })
+
+    // --- Tab detail ---
+    function openTab (id) {
+      currentTabId = id
+      showView('v-tab')
+      renderTab()
+    }
+
+    document.getElementById('back-btn').onclick = () => {
+      currentTabId = null
+      showView('v-list')
+      renderTabList()
+    }
+
+    function renderTab () {
+      const tab = tabs[currentTabId]
+      if (!tab) return
+
+      document.getElementById('tab-title').textContent = tab.name
+
+      // Participants
+      const pDiv = document.getElementById('participants')
+      pDiv.innerHTML = ''
+      for (const p of tab.participants) {
+        const chip = document.createElement('span')
+        chip.className = 'participant-chip'
+        chip.textContent = p
+        const x = document.createElement('button')
+        x.textContent = '\u00d7'
+        x.onclick = () => removeParticipant(p)
+        chip.appendChild(x)
+        pDiv.appendChild(chip)
+      }
+
+      // Transactions
+      const txList = document.getElementById('tx-list')
+      txList.innerHTML = ''
+      if (tab.transactions.length === 0) {
+        txList.innerHTML = '<li class="empty">No expenses yet</li>'
+      } else {
+        for (let i = tab.transactions.length - 1; i >= 0; i--) {
+          const tx = tab.transactions[i]
+          const li = document.createElement('li')
+          const left = document.createElement('div')
+          const desc = document.createElement('div')
+          desc.className = 'tx-desc'
+          desc.textContent = tx.description
+          const detail = document.createElement('div')
+          detail.className = 'tx-detail'
+          detail.textContent = `${tx.payer} paid \u2022 split ${tx.split.length} ways \u2022 ${tx.date || ''}`
+          left.append(desc, detail)
+
+          const right = document.createElement('div')
+          right.style.display = 'flex'
+          right.style.alignItems = 'center'
+          const amt = document.createElement('span')
+          amt.className = 'tx-amount'
+          amt.textContent = formatAmount(tx.amount)
+          const del = document.createElement('button')
+          del.className = 'tx-del'
+          del.textContent = '\u00d7'
+          del.onclick = () => { tab.transactions.splice(i, 1); saveTab(currentTabId); renderTab() }
+          right.append(amt, del)
+
+          li.append(left, right)
+          txList.appendChild(li)
+        }
+      }
+
+      // Balances
+      renderBalances(tab)
+    }
+
+    function renderBalances (tab) {
+      const balances = calcBalances(tab)
+      const balList = document.getElementById('balances')
+      balList.innerHTML = ''
+
+      if (tab.participants.length === 0) {
+        balList.innerHTML = '<li class="empty">Add participants to see balances</li>'
+        document.getElementById('settlements').innerHTML = ''
+        return
+      }
+
+      for (const p of tab.participants) {
+        const li = document.createElement('li')
+        const name = document.createElement('span')
+        name.textContent = p
+        const amt = document.createElement('span')
+        amt.className = 'amount ' + ((balances[p] || 0) >= 0 ? 'positive' : 'negative')
+        amt.textContent = formatAmount(balances[p] || 0)
+        li.append(name, amt)
+        balList.appendChild(li)
+      }
+
+      // Settlements
+      const settlements = calcSettlements(balances)
+      const setList = document.getElementById('settlements')
+      setList.innerHTML = ''
+      if (settlements.length === 0) {
+        setList.innerHTML = '<li class="empty">All settled up</li>'
+      } else {
+        for (const s of settlements) {
+          const li = document.createElement('li')
+          li.innerHTML = `<strong>${s.from}</strong> <span class="arrow">&rarr;</span> <strong>${s.to}</strong>: ${formatAmount(s.amount)}`
+          setList.appendChild(li)
+        }
+      }
+    }
+
+    // --- Participants ---
+    function addParticipant () {
+      const input = document.getElementById('new-person')
+      const name = input.value.trim()
+      if (!name || !currentTabId) return
+      const tab = tabs[currentTabId]
+      if (tab.participants.includes(name)) return
+      tab.participants.push(name)
+      saveTab(currentTabId)
+      input.value = ''
+      renderTab()
+    }
+
+    function removeParticipant (name) {
+      const tab = tabs[currentTabId]
+      tab.participants = tab.participants.filter(p => p !== name)
+      saveTab(currentTabId)
+      renderTab()
+    }
+
+    document.getElementById('add-person-btn').onclick = addParticipant
+    document.getElementById('new-person').addEventListener('keydown', e => { if (e.key === 'Enter') addParticipant() })
+
+    // --- Add transaction ---
+    document.getElementById('add-tx-btn').onclick = () => {
+      const tab = tabs[currentTabId]
+      if (tab.participants.length < 2) { alert('Add at least 2 participants first'); return }
+
+      const payer = document.getElementById('tx-payer')
+      payer.innerHTML = ''
+      for (const p of tab.participants) {
+        const opt = document.createElement('option')
+        opt.value = p
+        opt.textContent = p
+        payer.appendChild(opt)
+      }
+
+      const splitDiv = document.getElementById('tx-split')
+      splitDiv.innerHTML = ''
+      for (const p of tab.participants) {
+        const row = document.createElement('div')
+        row.className = 'split-row'
+        const cb = document.createElement('input')
+        cb.type = 'checkbox'
+        cb.checked = true
+        cb.id = 'split-' + p
+        cb.value = p
+        const lbl = document.createElement('label')
+        lbl.htmlFor = 'split-' + p
+        lbl.textContent = p
+        row.append(cb, lbl)
+        splitDiv.appendChild(row)
+      }
+
+      document.getElementById('tx-desc').value = ''
+      document.getElementById('tx-amount').value = ''
+      showView('v-tx')
+      document.getElementById('tx-desc').focus()
+    }
+
+    document.getElementById('tx-back-btn').onclick = () => { showView('v-tab'); renderTab() }
+
+    document.getElementById('tx-save-btn').onclick = () => {
+      const desc = document.getElementById('tx-desc').value.trim()
+      const amount = parseFloat(document.getElementById('tx-amount').value)
+      if (!desc || !amount || isNaN(amount)) return
+
+      const payer = document.getElementById('tx-payer').value
+      const split = []
+      document.querySelectorAll('#tx-split input:checked').forEach(cb => split.push(cb.value))
+      if (split.length === 0) return
+
+      const tab = tabs[currentTabId]
+      tab.transactions.push({
+        description: desc,
+        amount,
+        payer,
+        split,
+        date: new Date().toISOString().slice(0, 10)
+      })
+      saveTab(currentTabId)
+      showView('v-tab')
+      renderTab()
+    }
+
+    // --- Math ---
+    function calcBalances (tab) {
+      const bal = {}
+      for (const p of tab.participants) bal[p] = 0
+
+      for (const tx of tab.transactions) {
+        const share = tx.amount / tx.split.length
+        bal[tx.payer] = (bal[tx.payer] || 0) + tx.amount
+        for (const p of tx.split) {
+          bal[p] = (bal[p] || 0) - share
+        }
+      }
+      return bal
+    }
+
+    function calcSettlements (balances) {
+      // Greedy settlement: pair largest debtor with largest creditor
+      const debtors = []
+      const creditors = []
+      for (const [p, b] of Object.entries(balances)) {
+        if (b < -0.005) debtors.push({ name: p, amount: -b })
+        else if (b > 0.005) creditors.push({ name: p, amount: b })
+      }
+      debtors.sort((a, b) => b.amount - a.amount)
+      creditors.sort((a, b) => b.amount - a.amount)
+
+      const settlements = []
+      let i = 0, j = 0
+      while (i < debtors.length && j < creditors.length) {
+        const transfer = Math.min(debtors[i].amount, creditors[j].amount)
+        if (transfer > 0.005) {
+          settlements.push({ from: debtors[i].name, to: creditors[j].name, amount: transfer })
+        }
+        debtors[i].amount -= transfer
+        creditors[j].amount -= transfer
+        if (debtors[i].amount < 0.005) i++
+        if (creditors[j].amount < 0.005) j++
+      }
+      return settlements
+    }
+
+    function formatAmount (n) {
+      return n.toFixed(2)
+    }
+  </script>
+</body>
+</html>
