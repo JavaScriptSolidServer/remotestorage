@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bookmarks</title>
+  <script src="https://cdn.jsdelivr.net/npm/remotestoragejs@1.2.3/release/remotestorage.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/remotestorage-widget@1.4.0/build/widget.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: #f5f5f5; max-width: 720px; margin: 0 auto; padding: 1rem; }
+
+    header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    header h1 { font-size: 1.5rem; }
+    .spacer { flex: 1; }
+
+    .toolbar { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .toolbar input { flex: 1; padding: 0.5rem 0.75rem; border: 1px solid #ddd; border-radius: 6px; font-size: 0.95rem; }
+    .toolbar input:focus { outline: none; border-color: #4a9eff; box-shadow: 0 0 0 2px rgba(74,158,255,0.2); }
+    .toolbar button { padding: 0.5rem 1rem; background: #4a9eff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.95rem; font-weight: 500; white-space: nowrap; }
+    .toolbar button:hover { background: #3a8eef; }
+    .toolbar button:disabled { background: #ccc; cursor: default; }
+
+    .tags-bar { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .tag-filter { padding: 0.25rem 0.6rem; background: #e8e8e8; border: none; border-radius: 12px; font-size: 0.8rem; cursor: pointer; color: #555; }
+    .tag-filter:hover { background: #ddd; }
+    .tag-filter.active { background: #4a9eff; color: white; }
+
+    /* Add/Edit form */
+    .form-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 10; }
+    .form-overlay.open { display: flex; align-items: center; justify-content: center; }
+    .form-card { background: white; border-radius: 12px; padding: 1.5rem; width: 90%; max-width: 480px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+    .form-card h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+    .form-card label { display: block; font-size: 0.8rem; font-weight: 500; color: #555; margin-bottom: 0.2rem; }
+    .form-card input, .form-card textarea { width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 6px; font-size: 0.95rem; margin-bottom: 0.75rem; font-family: inherit; }
+    .form-card input:focus, .form-card textarea:focus { outline: none; border-color: #4a9eff; }
+    .form-card textarea { resize: vertical; min-height: 60px; }
+    .form-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
+    .form-actions button { padding: 0.5rem 1rem; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+    .btn-save { background: #4a9eff; color: white; }
+    .btn-save:hover { background: #3a8eef; }
+    .btn-cancel { background: #e8e8e8; color: #333; }
+    .btn-cancel:hover { background: #ddd; }
+
+    /* Bookmark list */
+    #bookmarks { list-style: none; }
+    #bookmarks li { background: white; margin-bottom: 0.5rem; padding: 0.8rem 1rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .bm-top { display: flex; align-items: baseline; gap: 0.5rem; }
+    .bm-title { font-weight: 500; color: #1a0dab; text-decoration: none; word-break: break-word; }
+    .bm-title:hover { text-decoration: underline; }
+    .bm-domain { font-size: 0.75rem; color: #006621; flex-shrink: 0; }
+    .bm-desc { font-size: 0.85rem; color: #666; margin-top: 0.3rem; line-height: 1.4; }
+    .bm-bottom { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.4rem; flex-wrap: wrap; }
+    .bm-tag { font-size: 0.7rem; padding: 0.15rem 0.45rem; background: #f0f0f0; border-radius: 3px; color: #888; }
+    .bm-date { font-size: 0.7rem; color: #bbb; margin-left: auto; }
+    .bm-actions { display: flex; gap: 0.3rem; margin-left: 0.5rem; }
+    .bm-actions button { background: none; border: none; color: #ccc; cursor: pointer; font-size: 0.85rem; padding: 0 0.2rem; }
+    .bm-actions button:hover { color: #666; }
+    .bm-actions .del:hover { color: #dc3545; }
+
+    .empty { color: #999; text-align: center; padding: 3rem 1rem; }
+    .count { font-size: 0.8rem; color: #999; margin-bottom: 0.75rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Bookmarks</h1>
+    <div id="rs-widget"></div>
+    <div class="spacer"></div>
+  </header>
+
+  <div class="toolbar">
+    <input type="text" id="search" placeholder="Search bookmarks..." disabled>
+    <button id="add-btn" disabled>+ Add</button>
+  </div>
+
+  <div class="tags-bar" id="tags-bar"></div>
+  <div class="count" id="count"></div>
+  <ul id="bookmarks"><li class="empty">Connect to your storage to start</li></ul>
+
+  <!-- Add/Edit modal -->
+  <div class="form-overlay" id="form-overlay">
+    <div class="form-card">
+      <h2 id="form-title">Add Bookmark</h2>
+      <label for="f-url">URL</label>
+      <input type="url" id="f-url" placeholder="https://...">
+      <label for="f-name">Title</label>
+      <input type="text" id="f-name" placeholder="Page title">
+      <label for="f-desc">Description (optional)</label>
+      <textarea id="f-desc" placeholder="Notes about this bookmark..."></textarea>
+      <label for="f-tags">Tags (comma-separated)</label>
+      <input type="text" id="f-tags" placeholder="dev, reference, tools">
+      <div class="form-actions">
+        <button class="btn-cancel" id="form-cancel">Cancel</button>
+        <button class="btn-save" id="form-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- remoteStorage setup ---
+    const rs = new RemoteStorage()
+    rs.access.claim('bookmarks', 'rw')
+    rs.caching.enable('/bookmarks/')
+
+    const widget = new Widget(rs)
+    widget.attach('rs-widget')
+
+    const client = rs.scope('/bookmarks/archive/')
+
+    // --- DOM refs ---
+    const searchInput = document.getElementById('search')
+    const addBtn = document.getElementById('add-btn')
+    const bookmarksList = document.getElementById('bookmarks')
+    const tagsBar = document.getElementById('tags-bar')
+    const countEl = document.getElementById('count')
+    const overlay = document.getElementById('form-overlay')
+    const formTitle = document.getElementById('form-title')
+    const fUrl = document.getElementById('f-url')
+    const fName = document.getElementById('f-name')
+    const fDesc = document.getElementById('f-desc')
+    const fTags = document.getElementById('f-tags')
+    const formSave = document.getElementById('form-save')
+    const formCancel = document.getElementById('form-cancel')
+
+    let allBookmarks = []  // { id, url, title, description, tags, createdAt }
+    let activeTag = null
+    let editingId = null
+
+    // --- RS events ---
+    rs.on('connected', () => {
+      searchInput.disabled = false
+      addBtn.disabled = false
+      loadBookmarks()
+    })
+
+    rs.on('disconnected', () => {
+      searchInput.disabled = true
+      addBtn.disabled = true
+      allBookmarks = []
+      activeTag = null
+      render()
+    })
+
+    // --- Data ---
+    function urlToId (url) {
+      // Same scheme as webmarks: base64-ish of URL
+      return btoa(url).replace(/\//g, '-').replace(/\+/g, '_').replace(/=+$/, '')
+    }
+
+    async function loadBookmarks () {
+      const listing = await client.getListing('')
+      allBookmarks = []
+
+      if (listing) {
+        const files = Object.keys(listing).filter(k => !k.endsWith('/'))
+        for (const name of files) {
+          try {
+            const file = await client.getFile(name)
+            if (file && file.data) {
+              const bm = JSON.parse(file.data)
+              bm.id = name
+              allBookmarks.push(bm)
+            }
+          } catch (e) { console.warn('Skip', name, e) }
+        }
+      }
+
+      // Sort newest first
+      allBookmarks.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      render()
+    }
+
+    async function saveBookmark (bm) {
+      const id = bm.id || urlToId(bm.url)
+      bm.id = id
+      await client.storeFile('application/json', id, JSON.stringify({
+        url: bm.url,
+        title: bm.title,
+        description: bm.description || '',
+        tags: bm.tags || [],
+        createdAt: bm.createdAt || Date.now()
+      }))
+      return id
+    }
+
+    async function deleteBookmark (id) {
+      await client.remove(id)
+      allBookmarks = allBookmarks.filter(b => b.id !== id)
+      render()
+    }
+
+    // --- Render ---
+    function getFilteredBookmarks () {
+      let list = allBookmarks
+      const q = searchInput.value.toLowerCase().trim()
+
+      if (q) {
+        list = list.filter(b =>
+          (b.title || '').toLowerCase().includes(q) ||
+          (b.url || '').toLowerCase().includes(q) ||
+          (b.description || '').toLowerCase().includes(q) ||
+          (b.tags || []).some(t => t.toLowerCase().includes(q))
+        )
+      }
+
+      if (activeTag) {
+        list = list.filter(b => (b.tags || []).includes(activeTag))
+      }
+
+      return list
+    }
+
+    function getAllTags () {
+      const tags = {}
+      for (const bm of allBookmarks) {
+        for (const t of (bm.tags || [])) {
+          tags[t] = (tags[t] || 0) + 1
+        }
+      }
+      return Object.entries(tags).sort((a, b) => b[1] - a[1])
+    }
+
+    function render () {
+      // Tags bar
+      const tags = getAllTags()
+      tagsBar.innerHTML = ''
+      if (activeTag) {
+        const all = document.createElement('button')
+        all.className = 'tag-filter'
+        all.textContent = 'All'
+        all.onclick = () => { activeTag = null; render() }
+        tagsBar.appendChild(all)
+      }
+      for (const [tag, count] of tags) {
+        const btn = document.createElement('button')
+        btn.className = 'tag-filter' + (activeTag === tag ? ' active' : '')
+        btn.textContent = `${tag} (${count})`
+        btn.onclick = () => { activeTag = activeTag === tag ? null : tag; render() }
+        tagsBar.appendChild(btn)
+      }
+
+      // Bookmarks list
+      const filtered = getFilteredBookmarks()
+      countEl.textContent = filtered.length === allBookmarks.length
+        ? `${allBookmarks.length} bookmark${allBookmarks.length !== 1 ? 's' : ''}`
+        : `${filtered.length} of ${allBookmarks.length} bookmarks`
+
+      bookmarksList.innerHTML = ''
+      if (filtered.length === 0) {
+        bookmarksList.innerHTML = `<li class="empty">${allBookmarks.length === 0 ? 'No bookmarks yet. Click + Add to get started.' : 'No matches'}</li>`
+        return
+      }
+
+      for (const bm of filtered) {
+        const li = document.createElement('li')
+
+        // Title + domain
+        const top = document.createElement('div')
+        top.className = 'bm-top'
+        const a = document.createElement('a')
+        a.className = 'bm-title'
+        a.href = bm.url
+        a.target = '_blank'
+        a.rel = 'noopener'
+        a.textContent = bm.title || bm.url
+        top.appendChild(a)
+        try {
+          const domain = document.createElement('span')
+          domain.className = 'bm-domain'
+          domain.textContent = new URL(bm.url).hostname
+          top.appendChild(domain)
+        } catch {}
+        li.appendChild(top)
+
+        // Description
+        if (bm.description) {
+          const desc = document.createElement('div')
+          desc.className = 'bm-desc'
+          desc.textContent = bm.description
+          li.appendChild(desc)
+        }
+
+        // Bottom row: tags + date + actions
+        const bottom = document.createElement('div')
+        bottom.className = 'bm-bottom'
+        for (const t of (bm.tags || [])) {
+          const tag = document.createElement('span')
+          tag.className = 'bm-tag'
+          tag.textContent = t
+          bottom.appendChild(tag)
+        }
+        if (bm.createdAt) {
+          const date = document.createElement('span')
+          date.className = 'bm-date'
+          date.textContent = new Date(bm.createdAt).toLocaleDateString()
+          bottom.appendChild(date)
+        }
+
+        const actions = document.createElement('span')
+        actions.className = 'bm-actions'
+        const editBtn = document.createElement('button')
+        editBtn.textContent = '\u270E'
+        editBtn.title = 'Edit'
+        editBtn.onclick = () => openForm(bm)
+        const delBtn = document.createElement('button')
+        delBtn.className = 'del'
+        delBtn.textContent = '\u00d7'
+        delBtn.title = 'Delete'
+        delBtn.onclick = () => deleteBookmark(bm.id)
+        actions.append(editBtn, delBtn)
+        bottom.appendChild(actions)
+
+        li.appendChild(bottom)
+        bookmarksList.appendChild(li)
+      }
+    }
+
+    // --- Form ---
+    function openForm (bm) {
+      editingId = bm ? bm.id : null
+      formTitle.textContent = bm ? 'Edit Bookmark' : 'Add Bookmark'
+      fUrl.value = bm ? bm.url : ''
+      fName.value = bm ? bm.title : ''
+      fDesc.value = bm ? (bm.description || '') : ''
+      fTags.value = bm ? (bm.tags || []).join(', ') : ''
+      overlay.classList.add('open')
+      fUrl.focus()
+    }
+
+    function closeForm () {
+      overlay.classList.remove('open')
+      editingId = null
+    }
+
+    async function submitForm () {
+      const url = fUrl.value.trim()
+      if (!url) return
+
+      const tags = fTags.value.split(',').map(t => t.trim()).filter(Boolean)
+      const bm = {
+        id: editingId,
+        url,
+        title: fName.value.trim() || url,
+        description: fDesc.value.trim(),
+        tags,
+        createdAt: editingId
+          ? (allBookmarks.find(b => b.id === editingId)?.createdAt || Date.now())
+          : Date.now()
+      }
+
+      // If editing and URL changed, remove old entry
+      if (editingId && urlToId(url) !== editingId) {
+        await client.remove(editingId)
+        allBookmarks = allBookmarks.filter(b => b.id !== editingId)
+      }
+
+      const id = await saveBookmark(bm)
+      bm.id = id
+
+      // Update local state
+      const idx = allBookmarks.findIndex(b => b.id === id)
+      if (idx >= 0) {
+        allBookmarks[idx] = bm
+      } else {
+        allBookmarks.unshift(bm)
+      }
+
+      closeForm()
+      render()
+    }
+
+    addBtn.onclick = () => openForm(null)
+    formCancel.onclick = closeForm
+    formSave.onclick = submitForm
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeForm() })
+    searchInput.addEventListener('input', render)
+
+    // Keyboard: Escape closes form
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && overlay.classList.contains('open')) closeForm()
+    })
+  </script>
+</body>
+</html>
