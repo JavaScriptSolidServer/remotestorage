@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Editor</title>
+  <script src="https://cdn.jsdelivr.net/npm/remotestoragejs@1.2.3/release/remotestorage.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/remotestorage-widget@1.4.0/build/widget.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; background: #f5f5f5; height: 100vh; display: flex; flex-direction: column; }
+    header { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; background: white; border-bottom: 1px solid #e0e0e0; }
+    header h1 { font-size: 1.1rem; flex-shrink: 0; }
+    #rs-widget { flex-shrink: 0; }
+    .spacer { flex: 1; }
+    #save-status { font-size: 0.8rem; color: #999; flex-shrink: 0; }
+    .main { display: flex; flex: 1; min-height: 0; }
+    .sidebar { width: 220px; background: white; border-right: 1px solid #e0e0e0; overflow-y: auto; flex-shrink: 0; }
+    .sidebar .actions { padding: 0.5rem; border-bottom: 1px solid #eee; }
+    .sidebar .actions button { width: 100%; padding: 0.4rem; background: #4a9eff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+    .sidebar .actions button:hover { background: #3a8eef; }
+    .sidebar .actions button:disabled { background: #ccc; }
+    .sidebar ul { list-style: none; }
+    .sidebar li { padding: 0.6rem 0.75rem; cursor: pointer; font-size: 0.85rem; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center; }
+    .sidebar li:hover { background: #f5f5f5; }
+    .sidebar li.active { background: #e8f0fe; font-weight: 500; }
+    .sidebar li .del { background: none; border: none; color: #ccc; cursor: pointer; font-size: 1rem; padding: 0 0.2rem; }
+    .sidebar li .del:hover { color: #dc3545; }
+    .editor-wrap { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    #editor { flex: 1; width: 100%; border: none; outline: none; resize: none; padding: 1.5rem; font-family: 'Georgia', serif; font-size: 1.1rem; line-height: 1.7; background: #fafafa; }
+    #editor:disabled { background: #f0f0f0; }
+    .empty-state { flex: 1; display: flex; align-items: center; justify-content: center; color: #999; font-size: 1rem; }
+    @media (max-width: 600px) {
+      .sidebar { width: 160px; }
+      #editor { padding: 1rem; font-size: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Editor</h1>
+    <div id="rs-widget"></div>
+    <div class="spacer"></div>
+    <span id="save-status"></span>
+  </header>
+  <div class="main">
+    <div class="sidebar">
+      <div class="actions">
+        <button id="new-btn" disabled>New Document</button>
+      </div>
+      <ul id="doc-list"></ul>
+    </div>
+    <div class="editor-wrap">
+      <textarea id="editor" disabled placeholder="Select or create a document..."></textarea>
+    </div>
+  </div>
+
+  <script>
+    const rs = new RemoteStorage()
+    rs.access.claim('documents', 'rw')
+    rs.caching.enable('/documents/')
+
+    const widget = new Widget(rs)
+    widget.attach('rs-widget')
+
+    const client = rs.scope('/documents/texts/')
+    const editor = document.getElementById('editor')
+    const docList = document.getElementById('doc-list')
+    const newBtn = document.getElementById('new-btn')
+    const saveStatus = document.getElementById('save-status')
+
+    let currentDoc = null
+    let saveTimer = null
+
+    rs.on('connected', () => {
+      newBtn.disabled = false
+      loadDocList()
+    })
+
+    rs.on('disconnected', () => {
+      newBtn.disabled = true
+      editor.disabled = true
+      editor.value = ''
+      currentDoc = null
+      docList.innerHTML = ''
+    })
+
+    async function loadDocList () {
+      const listing = await client.getListing('')
+      docList.innerHTML = ''
+
+      if (!listing) return
+
+      const files = Object.keys(listing).filter(k => !k.endsWith('/')).sort().reverse()
+      for (const name of files) {
+        addDocToSidebar(name)
+      }
+
+      // Auto-select first doc
+      if (files.length > 0) selectDoc(files[0])
+    }
+
+    function addDocToSidebar (name) {
+      const li = document.createElement('li')
+      li.dataset.name = name
+
+      const label = document.createElement('span')
+      label.textContent = docTitle(name)
+      label.onclick = () => selectDoc(name)
+
+      const del = document.createElement('button')
+      del.className = 'del'
+      del.textContent = '\u00d7'
+      del.onclick = async (e) => {
+        e.stopPropagation()
+        await client.remove(name)
+        li.remove()
+        if (currentDoc === name) {
+          currentDoc = null
+          editor.value = ''
+          editor.disabled = true
+        }
+      }
+
+      li.append(label, del)
+      docList.appendChild(li)
+    }
+
+    function docTitle (name) {
+      // name is like "1741234567890.txt" — show date
+      const ts = parseInt(name.replace('.txt', ''))
+      if (!isNaN(ts)) return new Date(ts).toLocaleDateString() + ' ' + new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      return name.replace('.txt', '')
+    }
+
+    async function selectDoc (name) {
+      // Save current doc before switching
+      if (currentDoc && saveTimer) {
+        clearTimeout(saveTimer)
+        await saveCurrentDoc()
+      }
+
+      currentDoc = name
+      editor.disabled = false
+
+      // Highlight in sidebar
+      docList.querySelectorAll('li').forEach(li => {
+        li.classList.toggle('active', li.dataset.name === name)
+      })
+
+      const file = await client.getFile(name)
+      editor.value = (file && file.data) || ''
+      editor.focus()
+      saveStatus.textContent = ''
+    }
+
+    async function saveCurrentDoc () {
+      if (!currentDoc) return
+      saveStatus.textContent = 'Saving...'
+      await client.storeFile('text/plain', currentDoc, editor.value)
+      saveStatus.textContent = 'Saved'
+      setTimeout(() => { if (saveStatus.textContent === 'Saved') saveStatus.textContent = '' }, 2000)
+    }
+
+    // Auto-save on typing (debounced 1s)
+    editor.addEventListener('input', () => {
+      if (!currentDoc) return
+      saveStatus.textContent = 'Editing...'
+      clearTimeout(saveTimer)
+      saveTimer = setTimeout(saveCurrentDoc, 1000)
+    })
+
+    // New document
+    newBtn.onclick = async () => {
+      const name = Date.now() + '.txt'
+      await client.storeFile('text/plain', name, '')
+      addDocToSidebar(name)
+      selectDoc(name)
+    }
+  </script>
+</body>
+</html>
